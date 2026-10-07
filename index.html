@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0a0910"><meta name="description" content="Live sound drawn as cymatic plate patterns, with raga detection."><style>:root{color-scheme:dark}html,body{margin:0;background:#0a0910}[hidden]{display:none!important}img{max-width:100%}</style></head><body>
+<title>Cymatic Plate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: the vibrating plate on the left, instrument panel (source, raga, controls) on the right, planet-tone gallery underneath. */
+:root {
+  --bg: #0a0910;
+  --panel: #13111b;
+  --panel-2: #1b1825;
+  --line: #2b2639;
+  --fg: #ede9f6;
+  --muted: #9a93ae;
+  --accent: #f2a34b;
+  --accent-ink: #1a1006;
+  --ok: #6fd6a0;
+  --warn: #ff8f7e;
+  --font-display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font-body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px; }
+header.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.brand h1 { font: 700 26px/1.1 var(--font-display); margin: 0; letter-spacing: -0.01em; }
+.brand p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.status { font: 500 12px/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--panel); }
+.status.live { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+.main { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr); gap: 20px; align-items: start; }
+@media (max-width: 880px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.plate { background: #000; border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
+canvas#cv { width: 100%; aspect-ratio: 1; display: block; border-radius: 8px; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.stat .l { font: 500 11px/1 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.stat .v { font: 500 20px/1.25 var(--font-mono); margin-top: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat .s { font: 400 12px/1.3 var(--font-mono); color: var(--muted); margin-top: 2px; min-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; min-width: 0; }
+.card h2 { font: 500 11px/1 var(--font-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--bg); padding: 4px; border-radius: 10px; border: 1px solid var(--line); }
+.tabs button { background: none; border: 0; color: var(--muted); font: 500 14px/1 var(--font-body); padding: 10px 6px; border-radius: 7px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--panel-2); color: var(--fg); box-shadow: inset 0 0 0 1px var(--line); }
+.pane { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.pane[hidden] { display: none; }
+button.primary { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 9px; font: 700 14px/1 var(--font-body); padding: 12px 16px; cursor: pointer; }
+button.primary.on { background: var(--warn); }
+button.ghost { background: var(--panel-2); color: var(--fg); border: 1px solid var(--line); border-radius: 9px; font: 500 13px/1 var(--font-body); padding: 10px 12px; cursor: pointer; }
+button:focus-visible, select:focus-visible, input:focus-visible, .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { color: var(--muted); font-size: 13px; margin: 0; }
+.msg { font-size: 13px; color: var(--warn); margin: 0; min-height: 0; }
+.msg:empty { display: none; }
+.drop { border: 1px dashed var(--line); border-radius: 10px; padding: 14px; text-align: center; color: var(--muted); font-size: 13px; }
+.drop.over { border-color: var(--accent); color: var(--fg); }
+input[type=file] { width: 100%; color: var(--muted); font: 13px var(--font-body); }
+input[type=file]::file-selector-button { background: var(--panel-2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin-right: 10px; cursor: pointer; font: 500 13px var(--font-body); }
+audio { width: 100%; height: 36px; }
+.ctl { display: grid; gap: 6px; min-width: 0; }
+.ctl label { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.ctl output { font-family: var(--font-mono); color: var(--fg); }
+select { width: 100%; background: var(--panel-2); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font: 14px var(--font-body); }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.check input { accent-color: var(--accent); width: 16px; height: 16px; }
+.raga-name { font: 700 30px/1.1 var(--font-display); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.raga-name.dim { color: var(--muted); font-weight: 500; }
+.raga-alias { color: var(--muted); font-size: 13px; margin-top: 2px; min-height: 19px; }
+.raga-meta { font: 400 13px/1.4 var(--font-mono); color: var(--muted); margin-top: 8px; }
+.raga-meta b { color: var(--accent); font-weight: 500; }
+.scale { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; min-height: 30px; }
+.scale span { font: 500 13px/1 var(--font-mono); padding: 7px 9px; border-radius: 7px; border: 1px solid var(--line); color: var(--muted); }
+.scale span.heard { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.bars { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; align-items: end; height: 76px; margin-top: 14px; }
+.bar { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; height: 100%; min-width: 0; }
+.bar i { display: block; width: 100%; min-height: 2px; border-radius: 3px 3px 0 0; background: var(--line); height: 2px; }
+.bar.in i { background: var(--accent); }
+.bar span { font: 400 10px/1 var(--font-mono); color: var(--muted); white-space: nowrap; }
+.bar.in span { color: var(--fg); }
+.cands { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.cands li { display: flex; justify-content: space-between; gap: 10px; font: 400 13px/1.3 var(--font-mono); color: var(--muted); border-top: 1px solid var(--line); padding-top: 6px; }
+.cands li b { color: var(--fg); font-weight: 500; }
+.note { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
+.gallery { margin-top: 30px; }
+.gallery h2 { font: 700 20px/1.2 var(--font-display); margin: 0; }
+.gallery .hint { margin: 4px 0 14px; }
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 760px; }
+.tile { background: #000; border: 1px solid var(--line); border-radius: 10px; padding: 6px 6px 10px; cursor: pointer; color: var(--fg); text-align: center; font: inherit; }
+.tile canvas { width: 100%; aspect-ratio: 1; display: block; border-radius: 6px; }
+.tile .n { font: 500 13px/1.2 var(--font-body); margin-top: 8px; display: block; color: #8fb4ff; }
+.tile .h { font: 400 11px/1.2 var(--font-mono); color: var(--muted); display: block; margin-top: 2px; }
+.tile[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+@media (max-width: 420px) { .stat .v { font-size: 16px; } .raga-name { font-size: 26px; } .tile .n { font-size: 12px; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>Cymatic Plate</h1>
+      <p>Sound drawn as vibrating-plate patterns, with the raga it lands on.</p>
+    </div>
+    <div class="status" id="status" role="status">Idle</div>
+  </header>
+
+  <div class="main">
+    <section>
+      <div class="plate"><canvas id="cv" width="400" height="400" aria-label="Cymatic pattern of the current sound"></canvas></div>
+      <div class="stats">
+        <div class="stat"><div class="l">Tone</div><div class="v" id="sFreq">126.2 Hz</div><div class="s" id="sFreqS">B2 · demo</div></div>
+        <div class="stat"><div class="l">Swara now</div><div class="v" id="sSwara">&mdash;</div><div class="s" id="sSwaraS">&nbsp;</div></div>
+        <div class="stat"><div class="l">Plate mode</div><div class="v" id="sMode">&mdash;</div><div class="s" id="sModeS">&nbsp;</div></div>
+      </div>
+    </section>
+
+    <section class="side">
+      <div class="card">
+        <h2>Sound source</h2>
+        <div class="tabs" role="tablist" aria-label="Sound source">
+          <button role="tab" id="tab-mic" aria-selected="true" aria-controls="pane-mic">Microphone</button>
+          <button role="tab" id="tab-file" aria-selected="false" aria-controls="pane-file">MP3 file</button>
+          <button role="tab" id="tab-tone" aria-selected="false" aria-controls="pane-tone">Tone</button>
+        </div>
+        <div class="pane" id="pane-mic" role="tabpanel">
+          <button class="primary" id="micBtn">Start listening</button>
+          <p class="hint">Sing, hum or play near the mic. Audio is analysed in your browser and never uploaded. Use headphones if you also play music.</p>
+        </div>
+        <div class="pane" id="pane-file" role="tabpanel" hidden>
+          <input type="file" id="fileInput" accept="audio/*,.mp3">
+          <div class="drop" id="drop">or drop an MP3 anywhere on this page</div>
+          <audio id="audioEl" controls hidden></audio>
+        </div>
+        <div class="pane" id="pane-tone" role="tabpanel" hidden>
+          <div class="ctl"><label for="toneFreq">Frequency <output id="toneFreqOut">126.2 Hz</output></label><input type="range" id="toneFreq" min="0" max="1000" value="285"></div>
+          <div class="grid2">
+            <div class="ctl"><label for="toneWave">Waveform</label><select id="toneWave"><option value="sine">Sine</option><option value="triangle">Triangle</option><option value="sawtooth">Sawtooth</option><option value="square">Square</option></select></div>
+            <div class="ctl"><label>&nbsp;</label><button class="primary" id="toneBtn">Play tone</button></div>
+          </div>
+          <p class="hint">Or tap a planet tone below the plate.</p>
+        </div>
+        <p class="msg" id="msg" role="alert"></p>
+      </div>
+
+      <div class="card">
+        <h2>Raga</h2>
+        <div class="raga-name dim" id="ragaName">Waiting for sound</div>
+        <div class="raga-alias" id="ragaAlias"></div>
+        <div class="raga-meta" id="ragaMeta">Play or sing a short phrase. The raga appears after a few different notes.</div>
+        <div class="scale" id="ragaScale"></div>
+        <div class="bars" id="bars" aria-label="Swara energy relative to Sa"></div>
+        <ul class="cands" id="cands"></ul>
+        <p class="note">Matches the notes heard against the 72 melakarta ragas and 11 common janya ragas. It reads the note set, not gamakas or phrasing, so treat it as a best guess. Works best on one voice or instrument.</p>
+      </div>
+
+      <div class="card">
+        <h2>Pattern</h2>
+        <div class="grid2">
+          <div class="ctl"><label for="style">Style</label><select id="style"><option value="nodal">Nodal lines</option><option value="contour">Contours</option><option value="cells">Sand cells</option></select></div>
+          <div class="ctl"><label for="palette">Colour</label><select id="palette"></select></div>
+          <div class="ctl"><label for="sens">Sensitivity <output id="sensOut"></output></label><input type="range" id="sens" min="0" max="100" value="70"></div>
+          <div class="ctl"><label for="weight">Line weight <output id="weightOut"></output></label><input type="range" id="weight" min="8" max="40" value="18"></div>
+          <div class="ctl"><label for="detail">Detail (partials) <output id="detailOut"></output></label><input type="range" id="detail" min="1" max="12" value="6"></div>
+          <div class="ctl"><label for="morph">Morph speed <output id="morphOut"></output></label><input type="range" id="morph" min="1" max="10" value="5"></div>
+        </div>
+        <label class="check" style="margin-top:12px"><input type="checkbox" id="spin"> Slowly rotate the plate</label>
+      </div>
+
+      <div class="card">
+        <h2>Raga settings</h2>
+        <div class="grid2">
+          <div class="ctl"><label for="sa">Sa (tonic)</label><select id="sa"><option value="auto">Auto-detect</option><option value="0">C</option><option value="1">C&#9839;</option><option value="2">D</option><option value="3">D&#9839;</option><option value="4">E</option><option value="5">F</option><option value="6">F&#9839;</option><option value="7">G</option><option value="8">G&#9839;</option><option value="9">A</option><option value="10">A&#9839;</option><option value="11">B</option></select></div>
+          <div class="ctl"><label>&nbsp;</label><button class="ghost" id="resetBtn">Forget notes heard</button></div>
+        </div>
+        <p class="hint" style="margin-top:10px">Auto-detect assumes Sa is the note you dwell on most. If you know your shruti, pick it for a surer match.</p>
+      </div>
+    </section>
+  </div>
+
+  <section class="gallery">
+    <h2>Planet tones</h2>
+    <p class="hint">Hans Cousto's planetary frequencies, each drawn by the same plate model. Tap one to hear it and see it live.</p>
+    <div class="tiles" id="tiles"></div>
+  </section>
+</div>
+
+<script>
+(function () {
+'use strict';
+var $ = function (id) { return document.getElementById(id); };
+var TAU = Math.PI * 2;
+
+/* ---------- Bessel functions J_m(x) lookup (Miller backward recurrence) ---------- */
+var MMAX = 24, DX = 0.02, XMAX = 72, NX = Math.floor(XMAX / DX) + 3, KMAX = 60, KS = 5.5;
+var JT = [];
+for (var m0 = 0; m0 <= MMAX + 1; m0++) JT.push(new Float32Array(NX));
+(function () {
+  var tmp = new Float64Array(220);
+  for (var i = 0; i < NX; i++) {
+    var x = i * DX;
+    if (x < 1e-9) { JT[0][i] = 1; continue; }
+    var N = 2 * Math.ceil((Math.max(x, MMAX) + 40) / 2);
+    tmp[N + 1] = 0; tmp[N] = 1e-30;
+    for (var k = N; k >= 1; k--) {
+      tmp[k - 1] = 2 * k / x * tmp[k] - tmp[k + 1];
+      if (Math.abs(tmp[k - 1]) > 1e100) { for (var q = k - 1; q <= N + 1; q++) tmp[q] *= 1e-100; }
+    }
+    var norm = tmp[0];
+    for (var e = 2; e <= N; e += 2) norm += 2 * tmp[e];
+    for (var m = 0; m <= MMAX + 1; m++) JT[m][i] = tmp[m] / norm;
+  }
+})();
+
+/* Plate eigenmodes: zeros of J_m, so the rim is a nodal circle. */
+function hash2(m, n) { var s = Math.sin(m * 12.9898 + n * 78.233) * 43758.5453; return (s - Math.floor(s)) * TAU; }
+var MODES = [];
+for (var mm = 0; mm <= MMAX; mm++) {
+  var n = 0, T = JT[mm];
+  for (var ii = 2; ii < NX; ii++) {
+    var a = T[ii - 1], b = T[ii];
+    if ((a < 0 && b >= 0) || (a > 0 && b <= 0)) {
+      var xz = ((ii - 1) + a / (a - b)) * DX;
+      if (xz > 1.5 && xz <= KMAX) { n++; MODES.push({ m: mm, n: n, k: xz, phi: hash2(mm, n) }); }
+    }
+  }
+}
+MODES.sort(function (p, q) { return p.k - q.k; });
+MODES.forEach(function (M) {
+  var t = M.k / DX, i = t | 0, jv = JT[M.m + 1][i] + (JT[M.m + 1][i + 1] - JT[M.m + 1][i]) * (t - i);
+  M.nr = (M.m === 0 ? 1 : 0.5) * jv * jv;
+});
+var NM = MODES.length;
+
+function targetFromPeaks(peaks, sigma, out) {
+  out.fill(0);
+  var s2 = 1 / (sigma * sigma);
+  for (var p = 0; p < peaks.length; p++) {
+    var kf = Math.min(KMAX - 0.5, Math.max(3.2, KS * Math.sqrt(peaks[p].f / 55)));
+    var amp = Math.pow(peaks[p].a, 0.8);
+    for (var i = 0; i < NM; i++) {
+      var d = MODES[i].k - kf;
+      if (d > 1.3 || d < -1.3) continue;
+      out[i] += amp * Math.exp(-d * d * s2);
+    }
+  }
+  var mx = 0, j;
+  for (j = 0; j < NM; j++) if (out[j] > mx) mx = out[j];
+  if (mx > 0) for (j = 0; j < NM; j++) out[j] /= mx;
+}
+function buildModes(amp, spin, maxN) {
+  var idx = [];
+  for (var i = 0; i < NM; i++) if (amp[i] > 0.06) idx.push(i);
+  idx.sort(function (p, q) { return amp[q] - amp[p]; });
+  idx = idx.slice(0, maxN || 10);
+  return idx.map(function (i) {
+    var M = MODES[i], ph = M.phi - M.m * spin;
+    return { i: i, m: M.m, n: M.n, k: M.k, a: amp[i], nr: M.nr, ph: ph, cp: Math.cos(ph), sp: Math.sin(ph) };
+  });
+}
+
+/* ---------- Palettes ---------- */
+var PALS = [
+  { name: 'Violet',  stops: [[0, 5, 3, 14], [0.35, 70, 30, 150], [0.7, 170, 110, 255], [1, 255, 245, 255]] },
+  { name: 'Ember',   stops: [[0, 12, 3, 1], [0.35, 150, 40, 10], [0.7, 255, 130, 40], [1, 255, 235, 190]] },
+  { name: 'Sun',     stops: [[0, 7, 9, 2], [0.4, 120, 130, 10], [0.75, 220, 235, 40], [1, 255, 255, 200]] },
+  { name: 'Aqua',    stops: [[0, 2, 7, 13], [0.4, 20, 110, 170], [0.75, 80, 210, 240], [1, 230, 255, 255]] },
+  { name: 'Amber',   stops: [[0, 11, 5, 0], [0.4, 170, 90, 10], [0.75, 255, 190, 50], [1, 255, 245, 200]] },
+  { name: 'Indigo',  stops: [[0, 3, 2, 17], [0.4, 50, 40, 200], [0.75, 130, 120, 255], [1, 235, 235, 255]] },
+  { name: 'Crimson', stops: [[0, 13, 2, 3], [0.4, 170, 20, 40], [0.75, 255, 90, 90], [1, 255, 220, 210]] }
+];
+function buildPal(st) {
+  var lut = new Uint32Array(256);
+  for (var i = 0; i < 256; i++) {
+    var t = i / 255, s = 0;
+    while (s < st.length - 2 && t > st[s + 1][0]) s++;
+    var A = st[s], B = st[s + 1], f = Math.min(1, Math.max(0, (t - A[0]) / (B[0] - A[0])));
+    var r = A[1] + (B[1] - A[1]) * f, g = A[2] + (B[2] - A[2]) * f, b = A[3] + (B[3] - A[3]) * f;
+    lut[i] = (255 << 24) | ((b | 0) << 16) | ((g | 0) << 8) | (r | 0);
+  }
+  return lut;
+}
+PALS.forEach(function (p) { p.lut = buildPal(p.stops); });
+
+/* ---------- Plate renderer ---------- */
+function Plate(S) {
+  this.S = S;
+  var R = S / 2 * 0.94, idx = [], rr = [], th = [];
+  for (var y = 0; y < S; y++) for (var x = 0; x < S; x++) {
+    var dx = (x + 0.5 - S / 2) / R, dy = (y + 0.5 - S / 2) / R, r = Math.sqrt(dx * dx + dy * dy);
+    if (r <= 1.045) { idx.push(y * S + x); rr.push(r); th.push(Math.atan2(dy, dx)); }
+  }
+  this.n = idx.length;
+  this.idx = Int32Array.from(idx); this.r = Float32Array.from(rr); this.th = Float32Array.from(th);
+  this.ct = []; this.st = []; this.F = new Float32Array(this.n);
+}
+Plate.prototype.trig = function (m) {
+  if (this.ct[m]) return;
+  var c = new Float32Array(this.n), s = new Float32Array(this.n), th = this.th;
+  for (var i = 0; i < this.n; i++) { c[i] = Math.cos(m * th[i]); s[i] = Math.sin(m * th[i]); }
+  this.ct[m] = c; this.st[m] = s;
+};
+Plate.prototype.render = function (out, modes, o) {
+  var n = this.n, F = this.F, r = this.r, idx = this.idx, e2 = 0, p, j;
+  F.fill(0);
+  for (j = 0; j < modes.length; j++) {
+    var md = modes[j], T = JT[md.m], inv = md.k / DX, a = md.a;
+    e2 += a * a;
+    if (md.m === 0) {
+      for (p = 0; p < n; p++) { var x0 = r[p] * inv, i0 = x0 | 0; F[p] += a * (T[i0] + (T[i0 + 1] - T[i0]) * (x0 - i0)); }
+    } else {
+      this.trig(md.m);
+      var ct = this.ct[md.m], st = this.st[md.m], cp = md.cp, sp = md.sp;
+      for (p = 0; p < n; p++) {
+        var x1 = r[p] * inv, i1 = x1 | 0;
+        F[p] += a * (T[i1] + (T[i1 + 1] - T[i1]) * (x1 - i1)) * (ct[p] * cp - st[p] * sp);
+      }
+    }
+  }
+  var ms = 0;
+  for (j = 0; j < modes.length; j++) ms += modes[j].a * modes[j].a * modes[j].nr;
+  out.fill(0xff000000);
+  var gain = 1 / (Math.sqrt(ms) + 1e-9), w = o.w, pal = o.pal, vis = o.vis, style = o.style;
+  var iw = 1 / w, iw3 = 1 / (w * 3.2), iw6 = 1 / (w * 0.55);
+  for (p = 0; p < n; p++) {
+    var rad = r[p], I = 0, ring = Math.exp(-((rad - 1) * (rad - 1)) / 0.00014) * 0.6;
+    if (rad <= 1.0 && e2 > 0) {
+      var u = F[p] * gain, au = u < 0 ? -u : u, q;
+      if (style === 'nodal') {
+        q = au * iw; I = Math.exp(-q * q);
+        q = au * iw3; I += 0.28 * Math.exp(-q * q);
+      } else if (style === 'contour') {
+        var s = 0.5 + 0.5 * Math.cos(u * 6.5), s2 = s * s, s4 = s2 * s2, s8 = s4 * s4;
+        q = au * iw; I = 0.8 * s8 + 0.5 * Math.exp(-q * q) + 0.1 * s2;
+      } else {
+        var cell = au / 1.5; if (cell > 1) cell = 1;
+        q = au * iw6; I = Math.pow(cell, 0.7) * (1 - 0.92 * Math.exp(-q * q));
+      }
+      if (I > 1) I = 1;
+      I *= vis;
+    }
+    var rv = ring * (0.35 + 0.65 * vis); if (rv > I) I = rv;
+    out[idx[p]] = pal[(I * 255 + 0.5) | 0];
+  }
+};
+
+/* ---------- Ragas ---------- */
+var MELA = 'Kanakangi Ratnangi Ganamurti Vanaspati Manavati Tanarupi Senavati Hanumatodi Dhenuka Natakapriya Kokilapriya Rupavati Gayakapriya Vakulabharanam Mayamalavagowla Chakravakam Suryakantam Hatakambari Jhankaradhwani Natabhairavi Keeravani Kharaharapriya Gaurimanohari Varunapriya Mararanjani Charukesi Sarasangi Harikambhoji Dheerasankarabharanam Naganandini Yagapriya Ragavardhini Gangeyabhushani Vagadheeswari Shulini Chalanata Salagam Jalarnavam Jhalavarali Navaneetam Pavani Raghupriya Gavambodhi Bhavapriya Shubhapantuvarali Shadvidamargini Suvarnangi Divyamani Dhavalambari Namanarayani Kamavardhini Ramapriya Gamanashrama Vishwambhari Shamalangi Shanmukhapriya Simhendramadhyamam Hemavati Dharmavati Neetimati Kantamani Rishabhapriya Latangi Vachaspati Mechakalyani Chitrambari Sucharitra Jyotiswarupini Dhatuvardhini Nasikabhushani Kosalam Rasikapriya'.split(' ');
+var ALIAS = { 8: 'Todi', 20: 'Bhairavi', 28: 'Kambhoji', 29: 'Sankarabharanam', 65: 'Kalyani' };
+var RG = [[1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4]], DN = [[8, 9], [8, 10], [8, 11], [9, 10], [9, 11], [10, 11]];
+var RAGAS = [], seen = {};
+for (var nn = 1; nn <= 72; nn++) {
+  var c0 = Math.floor((nn - 1) / 6), p0 = (nn - 1) % 6;
+  var set = [0, RG[c0 % 6][0], RG[c0 % 6][1], c0 >= 6 ? 6 : 5, 7, DN[p0][0], DN[p0][1]];
+  seen[set.join()] = 1;
+  RAGAS.push({ name: MELA[nn - 1], alias: ALIAS[nn] || '', set: set, kind: 'Melakarta ' + nn });
+}
+[['Mohanam', [0, 2, 4, 7, 9]], ['Hamsadhwani', [0, 2, 4, 7, 11]], ['Shuddha Saveri', [0, 2, 5, 7, 9], 'Durga'], ['Madhyamavati', [0, 2, 5, 7, 10]],
+ ['Hindolam', [0, 3, 5, 8, 10]], ['Abhogi', [0, 2, 3, 5, 9]], ['Bhoopalam', [0, 1, 3, 7, 8]], ['Malahari', [0, 1, 5, 7, 8]],
+ ['Revathi', [0, 1, 5, 7, 10]], ['Shuddha Dhanyasi', [0, 3, 5, 7, 10]], ['Sriranjani', [0, 2, 3, 5, 9, 10]]].forEach(function (j) {
+  if (seen[j[1].join()]) return;
+  seen[j[1].join()] = 1;
+  RAGAS.push({ name: j[0], alias: j[2] || '', set: j[1], kind: 'Janya · ' + j[1].length + ' notes' });
+});
+var GENERIC = ['S', 'R1', 'R2', 'G2', 'G3', 'M1', 'M2', 'P', 'D1', 'D2', 'N2', 'N3'];
+function labelMap(set) {
+  var L = {}, i;
+  for (i = 0; i < 12; i++) L[i] = GENERIC[i];
+  L[0] = 'S'; L[5] = 'M1'; L[6] = 'M2'; L[7] = 'P';
+  var rg = set.filter(function (s) { return s >= 1 && s <= 4; });
+  if (rg.length === 2) { L[rg[0]] = 'R' + rg[0]; L[rg[1]] = 'G' + (rg[1] - 1); }
+  else if (rg.length === 1) { L[rg[0]] = ['', 'R1', 'R2', 'G2', 'G3'][rg[0]]; }
+  var dn = set.filter(function (s) { return s >= 8 && s <= 11; });
+  if (dn.length === 2) { L[dn[0]] = 'D' + (dn[0] - 7); L[dn[1]] = 'N' + (dn[1] - 8); }
+  else if (dn.length === 1) { L[dn[0]] = { 8: 'D1', 9: 'D2', 10: 'N2', 11: 'N3' }[dn[0]]; }
+  return L;
+}
+RAGAS.forEach(function (r) { r.labels = labelMap(r.set); });
+
+/* ---------- Pitch tools ---------- */
+var NOTE = ['A', 'A♯', 'B', 'C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯'];
+function noteName(f) {
+  var mi = 69 + 12 * Math.log2(f / 440), r = Math.round(mi);
+  return { name: ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'][((r % 12) + 12) % 12] + (Math.floor(r / 12) - 1), cents: Math.round((mi - r) * 100) };
+}
+var yinD = new Float32Array(1001), yinC = new Float32Array(1001);
+function yin(buf, off, sr) {
+  var W = 1024, TM = 1000, tau, j, run = 0;
+  for (tau = 1; tau <= TM; tau++) {
+    var s = 0;
+    for (j = 0; j < W; j++) { var d = buf[off + j] - buf[off + j + tau]; s += d * d; }
+    yinD[tau] = s; run += s; yinC[tau] = run > 0 ? s * tau / run : 1;
+  }
+  var minTau = Math.max(2, Math.floor(sr / 1800));
+  tau = minTau;
+  while (tau < TM) {
+    if (yinC[tau] < 0.15) { while (tau + 1 < TM && yinC[tau + 1] < yinC[tau]) tau++; break; }
+    tau++;
+  }
+  if (tau >= TM) return { f: 0, clarity: 0 };
+  var a = yinC[tau - 1], b = yinC[tau], c = yinC[tau + 1], den = a - 2 * b + c, p = den !== 0 ? 0.5 * (a - c) / den : 0;
+  return { f: sr / (tau + p), clarity: 1 - b };
+}
+function findPeaks(d, binHz, maxN) {
+  var lo = Math.max(3, Math.ceil(40 / binHz)), hi = Math.min(d.length - 3, Math.floor(6500 / binHz)), M = -Infinity, i;
+  for (i = lo; i <= hi; i++) if (d[i] > M) M = d[i];
+  if (!isFinite(M) || M < -100) return [];
+  var thr = M - 42, cand = [];
+  for (i = lo; i <= hi; i++) {
+    var v = d[i];
+    if (v > thr && v > d[i - 1] && v >= d[i + 1] && v > d[i - 2] && v >= d[i + 2]) {
+      var a = d[i - 1], c = d[i + 1], p = 0;
+      if (isFinite(a) && isFinite(c)) { var den = a - 2 * v + c; if (den !== 0) p = 0.5 * (a - c) / den; }
+      cand.push({ f: (i + p) * binHz, db: v });
+    }
+  }
+  cand.sort(function (x, y) { return y.db - x.db; });
+  var out = [];
+  for (var q = 0; q < cand.length && out.length < maxN; q++) {
+    var ok = true;
+    for (var k = 0; k < out.length; k++) if (Math.abs(Math.log2(cand[q].f / out[k].f)) < 0.03) { ok = false; break; }
+    if (ok) out.push(cand[q]);
+  }
+  if (!out.length) return out;
+  var mx = out[0].db;
+  out.forEach(function (o) { o.a = Math.pow(10, (o.db - mx) / 20); });
+  return out;
+}
+
+/* ---------- Raga memory + solver ---------- */
+var hist = new Float32Array(120), G = [];
+for (var go = -7; go <= 7; go++) G.push(Math.exp(-0.5 * Math.pow(go * 10 / 35, 2)));
+function feed(f, wgt) {
+  var c = 1200 * Math.log2(f / 440), pos = ((c % 1200) + 1200) % 1200 / 10 - 0.5, i0 = Math.floor(pos), fr = pos - i0;
+  i0 = (i0 + 120) % 120;
+  hist[i0] += wgt * (1 - fr); hist[(i0 + 1) % 120] += wgt * fr;
+}
+function chromaFor(t) {
+  var c = new Float32Array(12), s = 0;
+  for (var i = 0; i < 12; i++) {
+    var ctr = (t + 10 * i) % 120, v = 0;
+    for (var o = -7; o <= 7; o++) v += hist[(ctr + o + 120) % 120] * G[o + 7];
+    c[i] = v; s += v;
+  }
+  if (s > 0) for (var j = 0; j < 12; j++) c[j] /= s;
+  return c;
+}
+var saMode = 'auto', prevRi = -1;
+function solveRaga() {
+  var total = 0, i;
+  for (i = 0; i < 120; i++) total += hist[i];
+  if (total < 4) return null;
+  var tonics = [];
+  if (saMode === 'auto') { for (i = 0; i < 120; i++) tonics.push(i); }
+  else {
+    var base = Math.round(((300 + 100 * parseInt(saMode, 10)) % 1200) / 10);
+    for (var o = -5; o <= 5; o++) tonics.push((base + o + 120) % 120);
+  }
+  var best = new Array(RAGAS.length), chromas = {};
+  for (var ti = 0; ti < tonics.length; ti++) {
+    var t = tonics[ti], c = chromaFor(t), mx = 0, sum = 0;
+    for (i = 0; i < 12; i++) { if (c[i] > mx) mx = c[i]; sum += c[i]; }
+    if (!(sum > 0)) continue;
+    chromas[t] = c;
+    for (var ri = 0; ri < RAGAS.length; ri++) {
+      var set = RAGAS[ri].set, inn = 0, cnt = 0;
+      for (var si = 0; si < set.length; si++) { inn += c[set[si]]; if (c[set[si]] >= 0.14 * mx) cnt++; }
+      var cov = cnt / set.length, score = inn - 2 * (1 - inn) + 0.6 * cov + 1.2 * c[0] + 0.5 * c[7];
+      if (!best[ri] || score > best[ri].score) best[ri] = { ri: ri, t: t, score: score, inn: inn, cov: cov };
+    }
+  }
+  var list = best.filter(Boolean).sort(function (a, b) { return b.score - a.score; });
+  if (!list.length) return null;
+  var top = list[0];
+  if (prevRi >= 0 && best[prevRi] && best[prevRi].score > top.score - 0.06) top = best[prevRi];
+  prevRi = top.ri;
+  var c2 = chromas[top.t], mx2 = 0, present = 0;
+  for (i = 0; i < 12; i++) if (c2[i] > mx2) mx2 = c2[i];
+  for (i = 0; i < 12; i++) if (c2[i] >= 0.14 * mx2) present++;
+  if (present < 3) return null;
+  top.tc = refineTonic(top.t);
+  var lst = list.slice(0, 3);
+  lst.forEach(function (x) { x.tc = refineTonic(x.t); });
+  return { top: top, list: lst, chroma: c2 };
+}
+function refineTonic(t) {
+  var num = 0, den = 0;
+  for (var i = 0; i < 12; i++) {
+    var ctr = (t + 10 * i) % 120;
+    for (var o = -5; o <= 5; o++) { var v = hist[(ctr + o + 120) % 120]; num += v * o; den += v; }
+  }
+  return (t + (den > 0 ? num / den : 0)) * 10 + 5;
+}
+function tonicText(cents) {
+  var semi = Math.round(cents / 100), off = Math.round(cents - semi * 100);
+  return NOTE[((semi % 12) + 12) % 12] + (off === 0 ? '' : ' ' + (off > 0 ? '+' : '−') + Math.abs(off) + '¢');
+}
+
+/* ---------- Audio ---------- */
+var ctx = null, analyser = null, monitor = null, fftBuf, timeBuf, byteT, byteF;
+var tab = 'mic', micStream = null, micNode = null, fileNode = null, fileLoaded = false, osc = null, oscGain = null, toneName = '';
+function ensureCtx() {
+  if (!ctx) {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    ctx = new AC();
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 8192; analyser.smoothingTimeConstant = 0.6;
+    monitor = ctx.createGain();
+    analyser.connect(monitor); monitor.connect(ctx.destination);
+    fftBuf = new Float32Array(analyser.frequencyBinCount); timeBuf = new Float32Array(analyser.fftSize); byteT = new Uint8Array(analyser.fftSize); byteF = new Uint8Array(analyser.frequencyBinCount);
+  }
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
+}
+function setMsg(t) { $('msg').textContent = t || ''; }
+function stopMic() {
+  if (micStream) { micStream.getTracks().forEach(function (t) { t.stop(); }); micStream = null; }
+  if (micNode) { try { micNode.disconnect(); } catch (e) {} micNode = null; }
+  $('micBtn').textContent = 'Start listening'; $('micBtn').classList.remove('on');
+}
+function stopTone() {
+  if (osc) { try { osc.stop(); osc.disconnect(); oscGain.disconnect(); } catch (e) {} osc = null; }
+  $('toneBtn').textContent = 'Play tone'; $('toneBtn').classList.remove('on');
+  markTile(null);
+}
+function startMic() {
+  setMsg('');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { micBlocked(); return; }
+  ensureCtx();
+  navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } }).then(function (s) {
+    stopTone(); $('audioEl').pause();
+    micStream = s; micNode = ctx.createMediaStreamSource(s); micNode.connect(analyser);
+    monitor.gain.value = 0;
+    $('micBtn').textContent = 'Stop listening'; $('micBtn').classList.add('on');
+    resetRaga();
+  }).catch(function () { micBlocked(); });
+}
+function micBlocked() {
+  if (!window.isSecureContext) { setMsg('Your browser only allows the microphone on secure (https) pages, and a downloaded .html file is not one. Put this file on an https host (Netlify Drop or GitHub Pages work), or test with an MP3 or tone here.'); return; }
+  setMsg('The microphone is not available here. Allow mic access when the browser asks. If this page is embedded, open it in its own browser tab, or use the downloaded HTML file. You can still test with an MP3 or a tone.');
+}
+function loadFile(file) {
+  if (!file) return;
+  setMsg(''); ensureCtx(); stopMic(); stopTone();
+  var el = $('audioEl');
+  if (!fileNode) { fileNode = ctx.createMediaElementSource(el); fileNode.connect(analyser); }
+  if (el.dataset.url) URL.revokeObjectURL(el.dataset.url);
+  var url = URL.createObjectURL(file);
+  el.dataset.url = url; el.src = url; el.hidden = false;
+  monitor.gain.value = 1; fileLoaded = true;
+  selectTab('file');
+  resetRaga();
+  var p = el.play(); if (p && p.catch) p.catch(function () { setMsg('Press play on the player below to start the MP3.'); });
+}
+function startTone(f, wave) {
+  ensureCtx(); stopMic(); $('audioEl').pause();
+  monitor.gain.value = 1;
+  if (osc) { osc.type = wave; osc.frequency.setTargetAtTime(f, ctx.currentTime, 0.02); }
+  else {
+    osc = ctx.createOscillator(); oscGain = ctx.createGain();
+    osc.type = wave; osc.frequency.value = f; oscGain.gain.value = 0.12;
+    osc.connect(oscGain); oscGain.connect(analyser); osc.start();
+  }
+  $('toneBtn').textContent = 'Stop tone'; $('toneBtn').classList.add('on');
+}
+function resetRaga() { hist.fill(0); prevRi = -1; showRaga(null); }
+
+/* ---------- UI wiring ---------- */
+function selectTab(t) {
+  tab = t;
+  ['mic', 'file', 'tone'].forEach(function (k) {
+    $('tab-' + k).setAttribute('aria-selected', k === t ? 'true' : 'false');
+    $('pane-' + k).hidden = k !== t;
+  });
+}
+['mic', 'file', 'tone'].forEach(function (k) {
+  $('tab-' + k).addEventListener('click', function () {
+    if (tab === k) return;
+    if (k !== 'mic') stopMic();
+    if (k !== 'tone') stopTone();
+    if (k !== 'file') $('audioEl').pause();
+    setMsg(''); selectTab(k);
+  });
+});
+$('micBtn').addEventListener('click', function () { if (micStream) stopMic(); else startMic(); });
+$('fileInput').addEventListener('change', function (e) { loadFile(e.target.files[0]); });
+['dragenter', 'dragover'].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); $('drop').classList.add('over'); }); });
+['dragleave', 'drop'].forEach(function (ev) { document.addEventListener(ev, function (e) { e.preventDefault(); $('drop').classList.remove('over'); }); });
+document.addEventListener('drop', function (e) { var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) loadFile(f); });
+$('audioEl').addEventListener('play', function () { if (ctx) ctx.resume(); monitor && (monitor.gain.value = 1); });
+
+function sliderFreq() { return 40 * Math.pow(50, $('toneFreq').value / 1000); }
+function freqToSlider(f) { return Math.round(1000 * Math.log(f / 40) / Math.log(50)); }
+function updateToneOut() { $('toneFreqOut').textContent = sliderFreq().toFixed(1) + ' Hz'; }
+$('toneFreq').addEventListener('input', function () { updateToneOut(); markTile(null); if (osc) startTone(sliderFreq(), $('toneWave').value); });
+$('toneWave').addEventListener('change', function () { if (osc) osc.type = $('toneWave').value; });
+$('toneBtn').addEventListener('click', function () { if (osc) stopTone(); else startTone(sliderFreq(), $('toneWave').value); });
+updateToneOut();
+
+PALS.forEach(function (p, i) { var o = document.createElement('option'); o.value = i; o.textContent = p.name; $('palette').appendChild(o); });
+$('palette').value = 0; $('style').value = 'nodal';
+var outs = { sens: function (v) { return v + '%'; }, weight: function (v) { return (v / 100).toFixed(2); }, detail: function (v) { return v; }, morph: function (v) { return v; } };
+Object.keys(outs).forEach(function (id) {
+  var upd = function () { $(id + 'Out').textContent = outs[id]($(id).value); };
+  $(id).addEventListener('input', upd); upd();
+});
+$('sa').addEventListener('change', function () { saMode = $('sa').value; });
+$('resetBtn').addEventListener('click', resetRaga);
+
+/* ---------- Raga card ---------- */
+var barsEl = $('bars'), barEls = [];
+for (var bi = 0; bi < 12; bi++) {
+  var d = document.createElement('div'); d.className = 'bar'; d.innerHTML = '<i></i><span></span>';
+  barsEl.appendChild(d); barEls.push(d);
+}
+var lastSolve = null;
+function showRaga(res) {
+  lastSolve = res;
+  var name = $('ragaName'), i;
+  if (!res) {
+    name.textContent = 'Waiting for sound'; name.classList.add('dim');
+    $('ragaAlias').textContent = '';
+    $('ragaMeta').textContent = 'Play or sing a short phrase. The raga appears after a few different notes.';
+    $('ragaScale').innerHTML = ''; $('cands').innerHTML = '';
+    barEls.forEach(function (b, k) { b.className = 'bar'; b.firstChild.style.height = '2px'; b.lastChild.textContent = GENERIC[k]; });
+    return;
+  }
+  var r = RAGAS[res.top.ri], c = res.chroma, mx = 0;
+  for (i = 0; i < 12; i++) if (c[i] > mx) mx = c[i];
+  name.textContent = r.name; name.classList.remove('dim');
+  $('ragaAlias').textContent = r.alias ? 'also known as ' + r.alias : '';
+  $('ragaMeta').innerHTML = r.kind + ' · Sa <b>' + tonicText(res.top.tc) + '</b> · <b>' + Math.round(res.top.inn * 100) + '%</b> of the sound sits on its notes';
+  var sc = $('ragaScale'); sc.innerHTML = '';
+  r.set.concat([12]).forEach(function (s) {
+    var sp = document.createElement('span');
+    sp.textContent = s === 12 ? 'S′' : r.labels[s];
+    if (s === 12 || c[s] >= 0.14 * mx) sp.className = 'heard';
+    sc.appendChild(sp);
+  });
+  barEls.forEach(function (b, k) {
+    var inSet = r.set.indexOf(k) >= 0;
+    b.className = 'bar' + (inSet ? ' in' : '');
+    b.firstChild.style.height = Math.max(2, Math.round(66 * c[k] / (mx || 1))) + 'px';
+    b.lastChild.textContent = inSet ? r.labels[k] : '';
+  });
+  var ul = $('cands'); ul.innerHTML = '';
+  res.list.forEach(function (x, k) {
+    if (k === 0) return;
+    var li = document.createElement('li');
+    li.innerHTML = '<b></b><span></span>';
+    li.firstChild.textContent = RAGAS[x.ri].name; li.lastChild.textContent = 'Sa ' + tonicText(x.tc) + ' · ' + Math.round(x.inn * 100) + '%';
+    ul.appendChild(li);
+  });
+}
+
+
+/* ---------- WebGL renderer (same maths as the CPU plate, on the GPU) ---------- */
+var STYLE_ID = { nodal: 0, contour: 1, cells: 2 };
+function makeGL(canvas) {
+  var gl;
+  try { gl = canvas.getContext('webgl2', { antialias: false, alpha: false, powerPreference: 'high-performance' }); } catch (e) { gl = null; }
+  if (!gl || gl.getParameter(gl.MAX_TEXTURE_SIZE) < NX) return null;
+  var VS = '#version 300 es\nin vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+  var FS = '#version 300 es\n' +
+    'precision highp float;precision highp int;precision highp sampler2D;\n' +
+    'uniform sampler2D uJ;uniform sampler2D uPal;uniform int uN;\n' +
+    'uniform float uM[12];uniform float uK[12];uniform float uA[12];uniform float uCP[12];uniform float uSP[12];\n' +
+    'uniform float uInv;uniform float uW;uniform float uVis;uniform int uStyle;uniform vec2 uRes;\n' +
+    'out vec4 oc;\n' +
+    'float bj(int m,float x){float t=x*' + (1 / DX).toFixed(1) + ';int i=int(t);float f=t-float(i);' +
+    'return mix(texelFetch(uJ,ivec2(i,m),0).r,texelFetch(uJ,ivec2(i+1,m),0).r,f);}\n' +
+    'void main(){\n' +
+    ' vec2 q=(gl_FragCoord.xy-0.5*uRes)/(0.47*min(uRes.x,uRes.y));q.y=-q.y;\n' +
+    ' float r=length(q);\n' +
+    ' if(r>1.045){oc=vec4(0.,0.,0.,1.);return;}\n' +
+    ' vec2 z1=q/max(r,1e-6);float I=0.;\n' +
+    ' if(r<=1.0&&uN>0){\n' +
+    '  float F=0.;\n' +
+    '  for(int i=0;i<12;i++){if(i>=uN)break;int m=int(uM[i]+0.5);\n' +
+    '   vec2 z=vec2(1.,0.);for(int j=0;j<24;j++){if(j>=m)break;z=vec2(z.x*z1.x-z.y*z1.y,z.x*z1.y+z.y*z1.x);}\n' +
+    '   float ang=(m==0)?1.0:(z.x*uCP[i]-z.y*uSP[i]);F+=uA[i]*bj(m,uK[i]*r)*ang;}\n' +
+    '  float u=F*uInv;float au=abs(u);\n' +
+    '  if(uStyle==0){float a=au/uW;I=exp(-a*a);float b=au/(uW*3.2);I+=0.28*exp(-b*b);}\n' +
+    '  else if(uStyle==1){float s=0.5+0.5*cos(u*6.5);float s2=s*s;float s4=s2*s2;float s8=s4*s4;float a=au/uW;I=0.8*s8+0.5*exp(-a*a)+0.1*s2;}\n' +
+    '  else{float c=min(1.,au/1.5);float a=au/(uW*0.55);I=pow(c,0.7)*(1.-0.92*exp(-a*a));}\n' +
+    '  I=min(I,1.)*uVis;\n' +
+    ' }\n' +
+    ' float ring=exp(-((r-1.)*(r-1.))/0.00014)*0.6*(0.35+0.65*uVis);\n' +
+    ' I=max(I,ring);\n' +
+    ' oc=vec4(texture(uPal,vec2(clamp(I,0.,1.)*0.996+0.002,0.5)).rgb,1.);\n' +
+    '}';
+  function sh(type, src) { var x = gl.createShader(type); gl.shaderSource(x, src); gl.compileShader(x); if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x)); return x; }
+  var prog;
+  try {
+    prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+    gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  } catch (e) { return null; }
+  gl.useProgram(prog);
+  var buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  var loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  // Bessel table texture: x along u, order m along v
+  var rows = MMAX + 1, flat = new Float32Array(NX * rows);
+  for (var m = 0; m < rows; m++) flat.set(JT[m], m * NX);
+  var tj = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tj);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, NX, rows, 0, gl.RED, gl.FLOAT, flat);
+  var pals = {};
+  function palTex(idx) {
+    if (pals[idx]) return pals[idx];
+    var t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(PALS[idx].lut.buffer));
+    return (pals[idx] = t);
+  }
+  var U = {};
+  ['uJ', 'uPal', 'uN', 'uM', 'uK', 'uA', 'uCP', 'uSP', 'uInv', 'uW', 'uVis', 'uStyle', 'uRes'].forEach(function (n) { U[n] = gl.getUniformLocation(prog, n); });
+  gl.uniform1i(U.uJ, 0); gl.uniform1i(U.uPal, 1);
+  var aM = new Float32Array(12), aK = new Float32Array(12), aA = new Float32Array(12), aC = new Float32Array(12), aS = new Float32Array(12);
+  return {
+    gl: gl,
+    render: function (modes, o) {
+      var n = Math.min(12, modes.length), ms = 0;
+      for (var i = 0; i < n; i++) { var d = modes[i]; aM[i] = d.m; aK[i] = d.k; aA[i] = d.a; aC[i] = d.cp; aS[i] = d.sp; ms += d.a * d.a * d.nr; }
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, palTex(o.palIdx));
+      gl.uniform1i(U.uN, n); gl.uniform1fv(U.uM, aM); gl.uniform1fv(U.uK, aK); gl.uniform1fv(U.uA, aA); gl.uniform1fv(U.uCP, aC); gl.uniform1fv(U.uSP, aS);
+      gl.uniform1f(U.uInv, 1 / (Math.sqrt(ms) + 1e-9)); gl.uniform1f(U.uW, o.w); gl.uniform1f(U.uVis, o.vis);
+      gl.uniform1i(U.uStyle, STYLE_ID[o.style] || 0); gl.uniform2f(U.uRes, canvas.width, canvas.height);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+  };
+}
+
+/* ---------- Plates ---------- */
+var cv = $('cv'), glp = makeGL(cv), g2, S = 400, plate, img, out32;
+function initCPU() { g2 = cv.getContext('2d'); S = 340; cv.width = cv.height = S; plate = new Plate(S); img = new ImageData(S, S); out32 = new Uint32Array(img.data.buffer); }
+function resizePlate(ns) { S = ns; cv.width = cv.height = S; plate = new Plate(S); img = new ImageData(S, S); out32 = new Uint32Array(img.data.buffer); }
+function fitGL() {
+  var d = Math.min(window.devicePixelRatio || 1, 2), w = Math.max(240, Math.min(1000, Math.round(cv.clientWidth * d)));
+  if (cv.width !== w) { cv.width = cv.height = w; glp.gl.viewport(0, 0, w, w); }
+}
+if (glp) {
+  cv.addEventListener('webglcontextlost', function (e) {
+    e.preventDefault(); glp = null;
+    var nc = cv.cloneNode(false); cv.parentNode.replaceChild(nc, cv); cv = nc; initCPU();
+  });
+} else initCPU();
+
+var PLANETS = [
+  { n: 'Saturn', f: 147.85, style: 'nodal', pal: 0 },
+  { n: 'Earth (day)', f: 194.18, style: 'nodal', pal: 1 },
+  { n: 'Sun', f: 126.22, style: 'contour', pal: 2 },
+  { n: 'Moon (synodic)', f: 210.42, style: 'nodal', pal: 1 },
+  { n: 'Moon (sidereal)', f: 227.43, style: 'cells', pal: 4 },
+  { n: 'Mercury', f: 141.27, style: 'contour', pal: 3 },
+  { n: 'Venus', f: 221.23, style: 'nodal', pal: 4 },
+  { n: 'Mars', f: 144.72, style: 'nodal', pal: 5 },
+  { n: 'Jupiter', f: 183.58, style: 'cells', pal: 6 }
+];
+var tileEls = [];
+function markTile(i) { tileEls.forEach(function (t, k) { t.setAttribute('aria-pressed', k === i ? 'true' : 'false'); }); }
+(function () {
+  var tp = new Plate(170), timg = new ImageData(170, 170), t32 = new Uint32Array(timg.data.buffer), tgt = new Float32Array(NM);
+  PLANETS.forEach(function (p, i) {
+    var b = document.createElement('button'); b.className = 'tile'; b.setAttribute('aria-pressed', 'false');
+    b.innerHTML = '<canvas width="170" height="170"></canvas><span class="n"></span><span class="h"></span>';
+    b.querySelector('.n').textContent = p.n; b.querySelector('.h').textContent = p.f.toFixed(2) + ' Hz';
+    targetFromPeaks([{ f: p.f, a: 1 }], 0.4, tgt);
+    tp.render(t32, buildModes(tgt, 0, 10), { style: p.style, pal: PALS[p.pal].lut, w: 0.2, vis: 1 });
+    b.querySelector('canvas').getContext('2d').putImageData(timg, 0, 0);
+    b.addEventListener('click', function () {
+      if (osc && tileEls[i].getAttribute('aria-pressed') === 'true') { stopTone(); return; }
+      $('style').value = p.style; $('palette').value = p.pal;
+      $('toneFreq').value = freqToSlider(p.f); $('toneWave').value = 'sine'; updateToneOut();
+      selectTab('tone'); setMsg(''); resetRaga();
+      startTone(p.f, 'sine'); markTile(i);
+    });
+    $('tiles').appendChild(b); tileEls.push(b);
+  });
+})();
+
+/* ---------- Main loop ---------- */
+var amp = new Float32Array(NM), tgt = new Float32Array(NM), vis = 0, spinA = 0, last = performance.now(), frameN = 0;
+var pitchCand = 0, pitchRun = 0, pitchOK = 0, yinRes = { f: 0, clarity: 0 }, level01 = 0, domF = 0, topPeaks = [], renderEma = 8, lastUI = 0, lastSolveT = 0;
+targetFromPeaks([{ f: 126.22, a: 1 }, { f: 252.44, a: 0.35 }], 0.4, tgt); amp.set(tgt);
+
+function engaged() { return !!micStream || !!osc || (fileLoaded && !$('audioEl').paused); }
+
+function frame(ts) {
+  requestAnimationFrame(frame);
+  var dt = Math.min(0.1, (ts - last) / 1000); last = ts; frameN++;
+  var live = engaged(), idle = !(micStream || osc || fileLoaded), visT = 0;
+  level01 = 0; topPeaks = [];
+  if (live && analyser) {
+    if (analyser.getFloatTimeDomainData) analyser.getFloatTimeDomainData(timeBuf);
+    else { analyser.getByteTimeDomainData(byteT); for (var bi2 = 0; bi2 < byteT.length; bi2++) timeBuf[bi2] = (byteT[bi2] - 128) / 128; }
+    var off = timeBuf.length - 2048, ss = 0, i;
+    for (i = 0; i < 2048; i++) { var v = timeBuf[off + i]; ss += v * v; }
+    var db = 20 * Math.log10(Math.sqrt(ss / 2048) + 1e-9), gate = -30 - 35 * ($('sens').value / 100);
+    level01 = Math.min(1, Math.max(0, (db - gate) / 30));
+    if (level01 > 0) {
+      if (analyser.getFloatFrequencyData) analyser.getFloatFrequencyData(fftBuf);
+      else { analyser.getByteFrequencyData(byteF); for (var bf = 0; bf < byteF.length; bf++) fftBuf[bf] = byteF[bf] > 0 ? analyser.minDecibels + (byteF[bf] / 255) * (analyser.maxDecibels - analyser.minDecibels) : -Infinity; }
+      topPeaks = findPeaks(fftBuf, ctx.sampleRate / analyser.fftSize, parseInt($('detail').value, 10));
+      if (frameN % 2 === 0) {
+        yinRes = yin(timeBuf, off, ctx.sampleRate);
+        if (yinRes.clarity > 0.88 && yinRes.f > 60 && yinRes.f < 1500) {
+          if (pitchCand && Math.abs(Math.log2(yinRes.f / pitchCand)) < 0.04) pitchRun++; else { pitchCand = yinRes.f; pitchRun = 1; }
+          pitchOK = pitchRun >= 3 ? yinRes.f : 0;
+        } else { pitchRun = 0; pitchCand = 0; pitchOK = 0; }
+      }
+      if (topPeaks.length) {
+        targetFromPeaks(topPeaks, 0.4, tgt); visT = 1; domF = topPeaks[0].f;
+        var wgt = level01 * dt * 10;
+        if (pitchOK > 0) { domF = pitchOK; feed(pitchOK, wgt); }
+        else for (var q = 0; q < Math.min(3, topPeaks.length); q++) if (topPeaks[q].f < 1500) feed(topPeaks[q].f, topPeaks[q].a * wgt * 0.5);
+      }
+    } else { yinRes = { f: 0, clarity: 0 }; pitchRun = 0; pitchCand = 0; pitchOK = 0; }
+  } else if (idle) {
+    visT = 0.85;
+  }
+  for (var h = 0; h < 120; h++) hist[h] *= Math.pow(0.5, dt / 10);
+  var rate = 0.02 + 0.045 * $('morph').value, k = 1 - Math.pow(1 - Math.min(0.9, rate), dt * 60);
+  for (var j = 0; j < NM; j++) { var dl = tgt[j] - amp[j]; amp[j] += dl * (dl > 0 ? k : k * 0.55); }
+  vis += (visT - vis) * (1 - Math.exp(-dt * 6));
+  if ($('spin').checked) spinA += dt * 0.15;
+
+  var t0 = performance.now();
+  var modes = buildModes(amp, spinA, glp ? 12 : 10), pi = parseInt($('palette').value, 10);
+  var ro = { style: $('style').value, pal: PALS[pi].lut, palIdx: pi, w: ($('weight').value / 100) * (0.6 + 0.5 * (idle ? 0.5 : level01)) / (1 + 0.1 * Math.max(0, modes.length - 2)), vis: vis };
+  if (glp) { fitGL(); glp.render(modes, ro); }
+  else {
+    plate.render(out32, modes, ro); g2.putImageData(img, 0, 0);
+    renderEma = renderEma * 0.95 + (performance.now() - t0) * 0.05;
+    if (frameN % 90 === 0 && renderEma > 26 && S > 260) { resizePlate(S - 60); renderEma = 10; }
+  }
+
+  if (ts - lastSolveT > 350) { lastSolveT = ts; if (live) { var res = solveRaga(); showRaga(res); } }
+  if (ts - lastUI > 120) { lastUI = ts; updateStats(live, idle, modes); }
+}
+
+function updateStats(live, idle, modes) {
+  var st = $('status');
+  if (idle) { st.textContent = 'Idle · demo'; st.className = 'status'; }
+  else {
+    var base = micStream ? 'Mic live' : osc ? 'Tone ' + sliderFreq().toFixed(1) + ' Hz' : 'MP3';
+    st.textContent = level01 > 0 ? base : base + ' · quiet'; st.className = 'status' + (live ? ' live' : '');
+  }
+  var f = idle ? 126.22 : (level01 > 0 ? domF : 0);
+  if (f > 0) {
+    var nn = noteName(f);
+    $('sFreq').textContent = f.toFixed(1) + ' Hz';
+    $('sFreqS').textContent = nn.name + ' ' + (nn.cents >= 0 ? '+' : '−') + Math.abs(nn.cents) + '¢' + (idle ? ' · demo' : '');
+  } else { $('sFreq').textContent = '—'; $('sFreqS').textContent = ' '; }
+  if (f > 0 && !idle && lastSolve) {
+    var cents = 1200 * Math.log2(f / 440), tc = lastSolve.top.tc;
+    var rel = (((cents - tc) % 1200) + 1200) % 1200, si = Math.round(rel / 100) % 12, dev = Math.round(rel - Math.round(rel / 100) * 100);
+    var r = RAGAS[lastSolve.top.ri];
+    $('sSwara').textContent = r.set.indexOf(si) >= 0 ? r.labels[si] : GENERIC[si];
+    $('sSwaraS').textContent = (dev >= 0 ? '+' : '−') + Math.abs(dev) + '¢ vs Sa';
+  } else { $('sSwara').textContent = '—'; $('sSwaraS').textContent = lastSolve || idle ? ' ' : 'needs a few notes'; }
+  if (modes.length) {
+    $('sMode').textContent = '(' + modes[0].m + ', ' + modes[0].n + ')';
+    $('sModeS').textContent = modes.length + ' modes · k ' + modes[0].k.toFixed(2);
+  } else { $('sMode').textContent = '—'; $('sModeS').textContent = ' '; }
+}
+
+window.__cym = { gl: function () { return !!glp; }, hist: function () { var b = 0; for (var i = 1; i < 120; i++) if (hist[i] > hist[b]) b = i; return [b, Array.from(hist).map(function (v) { return Math.round(v); }).join(',')]; }, solve: function () { return solveRaga(); }, ragas: RAGAS, modes: NM, state: function () { return { vis: vis, level01: level01, domF: domF, S: S, lastSolve: lastSolve && RAGAS[lastSolve.top.ri].name, ema: renderEma }; } };
+showRaga(null);
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
